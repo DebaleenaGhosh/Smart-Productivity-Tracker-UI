@@ -16,6 +16,8 @@ export default function Register() {
     setForm({ ...form, [e.target.name]: e.target.value })
   }
 
+  const [message, setMessage] = useState("");
+
   const handleRegister = async (e) => {
     e.preventDefault()
 
@@ -25,11 +27,15 @@ export default function Register() {
         form
       )
 
-      alert("Registration successful! Please login.")
-      navigate("/")
+      setMessage("Registration successful! Please login.");
+      setTimeout(() => navigate("/"), 1500);
 
     } catch (err) {
-      alert("Registration failed")
+      if (err.response && err.response.status === 400) {
+        setMessage("Username or email already in use.");
+      } else {
+        setMessage("Registration failed. Please try again.");
+      }
     }
   }
 
@@ -42,6 +48,8 @@ export default function Register() {
         <h2 className="text-2xl font-semibold text-center mb-6">
           Register
         </h2>
+
+        {message && <div className="alert alert-info mb-4 text-center text-blue-700 bg-blue-100 border border-blue-300 rounded p-2">{message}</div>}
 
         <input
           name="userName"
@@ -75,6 +83,8 @@ export default function Register() {
         >
           <option value="USER">USER</option>
           <option value="ADMIN">ADMIN</option>
+          <option value="PREMIUM_USER">PREMIUM USER</option>
+          <option value="MODERATOR">MODERATOR</option>
         </select>
 
         <button className="btn-primary w-full mt-4">
