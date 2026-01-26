@@ -7,7 +7,9 @@ import {
 } from "../api/taskService";
 import TaskModal from "../components/TaskModal";
 import KanbanBoard from "../components/KanbanBoard";
-import { LogOut, User, CheckCircle, AlertCircle, Clock } from "lucide-react";
+import { LogOut, User, CheckCircle, AlertCircle, Clock, ChevronDown } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { logout } from "../services/authService";
 
 /* ===== STATUS OPTIONS (MUST MATCH BACKEND ENUM) ===== */
 const STATUS_OPTIONS = [
@@ -25,14 +27,24 @@ const statusStyles = {
 
 function Dashboard() {
   const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [userRole] = useState(localStorage.getItem("userRole") || "User");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [showNavDropdown, setShowNavDropdown] = useState("");
+  const navigate = useNavigate();
 
   /* ===== LOAD TASKS ===== */
   const loadTasks = () => {
-    getTasks().then((res) => setTasks(res.data));
+    setLoading(true);
+    getTasks().then((res) => {
+      setTasks(res.data);
+      setLoading(false);
+    }).catch(() => {
+      setLoading(false);
+    });
   };
 
   useEffect(() => {
@@ -81,16 +93,28 @@ function Dashboard() {
     }
   };
 
-  const handleLogout = () => {
+const handleLogout = async () => {
+  try {
+    await logout(); // 🔥 calls backend
+  } catch (err) {
+    console.error("Logout failed", err);
+  } finally {
     localStorage.removeItem("token");
     localStorage.removeItem("userRole");
-    window.location.href = "/login";
-  };
+    window.location.replace("/?loggedOut=1");
+  }
+};
 
   return (
     <>
-      {/* Top Navigation Bar */}
-      <div className="bg-white shadow-md sticky top-0 z-50">
+      {loading ? (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-xl">Loading...</div>
+        </div>
+      ) : (
+        <>
+          {/* Top Navigation Bar */}
+          <div className="bg-white shadow-md sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <CheckCircle className="w-8 h-8 text-indigo-600" />
@@ -99,32 +123,90 @@ function Dashboard() {
             </h1>
           </div>
 
-          {/* Profile Section */}
-          <div className="relative">
-            <button
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition"
-            >
-              <User className="w-5 h-5 text-indigo-600" />
-              <span className="text-sm font-medium text-gray-700">{userRole}</span>
-            </button>
-
-            {/* Dropdown Menu */}
-            {showProfileMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200">
-                <div className="px-4 py-3 border-b border-gray-200">
-                  <p className="text-sm text-gray-600">Logged in as</p>
-                  <p className="font-semibold text-gray-800">{userRole}</p>
+          {/* Header Dropdowns */}
+          <div className="flex items-center gap-6">
+            {/* Homepage Dropdown */}
+            <div className="relative">
+              <button
+                className="flex items-center gap-1 px-4 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition font-medium"
+                onClick={() => setShowNavDropdown(showNavDropdown === 'home' ? '' : 'home')}
+              >
+                Homepage <ChevronDown className="w-4 h-4" />
+              </button>
+              {showNavDropdown === 'home' && (
+                <div className="absolute left-0 mt-2 w-32 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+                  <button onClick={() => {navigate("/dashboard"); setShowNavDropdown("");}}
+                    className="block w-full text-left px-4 py-2 hover:bg-indigo-50">Dashboard</button>
+                  <button onClick={() => {navigate("/"); setShowNavDropdown("");}}
+                    className="block w-full text-left px-4 py-2 hover:bg-indigo-50">Login</button>
                 </div>
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-2 px-4 py-3 text-red-600 hover:bg-red-50 transition text-left"
-                >
-                  <LogOut className="w-4 h-4" />
-                  Logout
-                </button>
-              </div>
-            )}
+              )}
+            </div>
+            {/* About Dropdown */}
+            <div className="relative">
+              <button
+                className="flex items-center gap-1 px-4 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition font-medium"
+                onClick={() => setShowNavDropdown(showNavDropdown === 'about' ? '' : 'about')}
+              >
+                About <ChevronDown className="w-4 h-4" />
+              </button>
+              {showNavDropdown === 'about' && (
+                <div className="absolute left-0 mt-2 w-40 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+                  <div className="px-4 py-2 text-gray-700 text-sm">Smart Productivity Tracker v1.0<br/>Created by Your Team</div>
+                </div>
+              )}
+            </div>
+            {/* Task Status Dropdown */}
+            <div className="relative">
+              <button
+                className="flex items-center gap-1 px-4 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition font-medium"
+                onClick={() => setShowNavDropdown(showNavDropdown === 'status' ? '' : 'status')}
+              >
+                Task Status <ChevronDown className="w-4 h-4" />
+              </button>
+              {showNavDropdown === 'status' && (
+                <div className="absolute left-0 mt-2 w-40 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+                  <button onClick={() => {setStatusFilter(""); setShowNavDropdown("");}}
+                    className="block w-full text-left px-4 py-2 hover:bg-indigo-50">All</button>
+                  {STATUS_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => {setStatusFilter(opt.value); setShowNavDropdown("");}}
+                      className="block w-full text-left px-4 py-2 hover:bg-indigo-50"
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Profile Section */}
+            <div className="relative">
+              <button
+                onClick={() => setShowProfileMenu(!showProfileMenu)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition"
+              >
+                <User className="w-5 h-5 text-indigo-600" />
+                <span className="text-sm font-medium text-gray-700">{userRole}</span>
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              {/* Dropdown Menu */}
+              {showProfileMenu && (
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-30">
+                  <div className="px-4 py-3 border-b border-gray-200">
+                    <p className="text-sm text-gray-600">Logged in as</p>
+                    <p className="font-semibold text-indigo-700">{userRole}</p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-4 py-3 text-red-600 hover:bg-red-50 transition text-left"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -166,8 +248,11 @@ function Dashboard() {
           initialData={editingTask}
         />
       </div>
+        </>
+      )}
     </>
   );
+}
 
 
   // return (
@@ -277,6 +362,5 @@ function Dashboard() {
   //     />
   //   </div>
   // );
-}
 
 export default Dashboard;
