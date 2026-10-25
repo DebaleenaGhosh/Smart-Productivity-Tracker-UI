@@ -7,9 +7,12 @@ import {
 } from "../api/taskService";
 import TaskModal from "../components/TaskModal";
 import KanbanBoard from "../components/KanbanBoard";
-import { LogOut, User, CheckCircle, AlertCircle, Clock, ChevronDown } from "lucide-react";
+import Insights from "../components/Insights";
+import { LogOut, User, CheckCircle, Clock, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { logout } from "../services/authService";
+import { getSession } from "../utils/session";
+import { getApiError } from "../utils/apiError";
 
 /* ===== STATUS OPTIONS (MUST MATCH BACKEND ENUM) ===== */
 const STATUS_OPTIONS = [
@@ -18,38 +21,53 @@ const STATUS_OPTIONS = [
   { label: "Completed", value: "COMPLETED" },
 ];
 
-/* ===== STATUS COLOR STYLES ===== */
-const statusStyles = {
-  PENDING: "bg-yellow-100 text-yellow-700 border-yellow-300",
-  IN_PROGRESS: "bg-blue-100 text-blue-700 border-blue-300",
-  COMPLETED: "bg-green-100 text-green-700 border-green-300",
-};
-
 function Dashboard() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [pendingIds, setPendingIds] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [userRole] = useState(localStorage.getItem("userRole") || "User");
+  const [session] = useState(() => getSession());
   const [statusFilter, setStatusFilter] = useState("");
   const [showNavDropdown, setShowNavDropdown] = useState("");
+  const [view, setView] = useState("tasks");
+  const [insightsRevision, setInsightsRevision] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const navigate = useNavigate();
+  const userRole = session?.role || "USER";
+  const userName = session?.sub || "User";
 
   /* ===== LOAD TASKS ===== */
-  const loadTasks = () => {
+  useEffect(() => {
+    let active = true;
+    getTasks()
+      .then((res) => {
+        if (!active) return;
+        setTasks(Array.isArray(res.data) ? res.data : []);
+        setLoadError("");
+      })
+      .catch((err) => {
+        if (active) setLoadError(getApiError(err, "Unable to load tasks."));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [reloadKey]);
+
+  const retryLoad = () => {
     setLoading(true);
-    getTasks().then((res) => {
-      setTasks(res.data);
-      setLoading(false);
-    }).catch(() => {
-      setLoading(false);
-    });
+    setLoadError("");
+    setReloadKey((key) => key + 1);
   };
 
-  useEffect(() => {
-    loadTasks();
-  }, []);
+  const markPending = (id, on) =>
+    setPendingIds((ids) => (on ? [...ids, id] : ids.filter((x) => x !== id)));
 
   /* ===== ADD / EDIT ===== */
   const handleAdd = () => {
@@ -62,48 +80,65 @@ function Dashboard() {
     setShowModal(true);
   };
 
+  // Errors propagate to the modal so the user's input is preserved.
   const handleSave = async (task) => {
+    setActionError("");
     if (editingTask) {
-      await updateTask({ ...task, taskId: editingTask.taskId });
+      const { data } = await updateTask({ ...task, taskId: editingTask.taskId });
+      setTasks((prev) => prev.map((t) => (t.taskId === data.taskId ? data : t)));
     } else {
-      await createTask(task);
+      const { data } = await createTask(task);
+      setTasks((prev) => [...prev, data]);
     }
     setShowModal(false);
-    loadTasks();
+    setInsightsRevision((r) => r + 1);
   };
 
   /* ===== STATUS CHANGE ===== */
   const handleStatusChange = async (task, newStatus) => {
-    // Optimistic UI update
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.taskId === task.taskId ? { ...t, status: newStatus } : t
-      )
-    );
-
+    if (pendingIds.includes(task.taskId) || task.status === newStatus) return;
+    setActionError("");
+    markPending(task.taskId, true);
     try {
-      await updateTask({
-        ...task,
-        taskId: task.taskId,
-        status: newStatus,
-      });
-    } catch (error) {
-      console.error("Failed to update status", error);
-      loadTasks(); // rollback
+      const { data } = await updateTask({ ...task, status: newStatus });
+      setTasks((prev) => prev.map((t) => (t.taskId === data.taskId ? data : t)));
+      setInsightsRevision((r) => r + 1);
+    } catch (err) {
+      setActionError(getApiError(err, "Failed to update the task status."));
+    } finally {
+      markPending(task.taskId, false);
     }
   };
 
-const handleLogout = async () => {
-  try {
-    await logout(); // 🔥 calls backend
-  } catch (err) {
-    console.error("Logout failed", err);
-  } finally {
-    localStorage.removeItem("token");
-    localStorage.removeItem("userRole");
-    window.location.replace("/?loggedOut=1");
-  }
-};
+  /* ===== DELETE ===== */
+  const handleDelete = async (taskId) => {
+    if (pendingIds.includes(taskId)) return;
+    setActionError("");
+    markPending(taskId, true);
+    try {
+      await deleteTask(taskId);
+      setTasks((prev) => prev.filter((t) => t.taskId !== taskId));
+      setInsightsRevision((r) => r + 1);
+    } catch (err) {
+      setActionError(getApiError(err, "Failed to delete the task."));
+    } finally {
+      markPending(taskId, false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (err) {
+      console.error("Logout failed", err);
+    } finally {
+      window.location.replace("/?loggedOut=1");
+    }
+  };
+
+  const visibleTasks = statusFilter
+    ? tasks.filter((t) => t.status === statusFilter)
+    : tasks;
 
   return (
     <>
@@ -135,7 +170,15 @@ const handleLogout = async () => {
               </button>
               {showNavDropdown === 'home' && (
                 <div className="absolute left-0 mt-2 w-32 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
-                  <button onClick={() => {navigate("/dashboard"); setShowNavDropdown("");}}
+                  <button onClick={() => {
+                      // Already on /dashboard, so navigating alone is a no-op: reset the view instead.
+                      setView("tasks");
+                      setStatusFilter("");
+                      setShowProfileMenu(false);
+                      setShowNavDropdown("");
+                      navigate("/dashboard");
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
                     className="block w-full text-left px-4 py-2 hover:bg-indigo-50">Dashboard</button>
                   <button onClick={() => {navigate("/"); setShowNavDropdown("");}}
                     className="block w-full text-left px-4 py-2 hover:bg-indigo-50">Login</button>
@@ -152,7 +195,7 @@ const handleLogout = async () => {
               </button>
               {showNavDropdown === 'about' && (
                 <div className="absolute left-0 mt-2 w-40 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
-                  <div className="px-4 py-2 text-gray-700 text-sm">Smart Productivity Tracker v1.0<br/>Created by Your Team</div>
+                  <div className="px-4 py-2 text-gray-700 text-sm">Smart Productivity Tracker v1.0<br/>Created by Debaleena</div>
                 </div>
               )}
             </div>
@@ -187,7 +230,7 @@ const handleLogout = async () => {
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition"
               >
                 <User className="w-5 h-5 text-indigo-600" />
-                <span className="text-sm font-medium text-gray-700">{userRole}</span>
+                <span className="text-sm font-medium text-gray-700">{userName}</span>
                 <ChevronDown className="w-4 h-4" />
               </button>
               {/* Dropdown Menu */}
@@ -195,7 +238,7 @@ const handleLogout = async () => {
                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-30">
                   <div className="px-4 py-3 border-b border-gray-200">
                     <p className="text-sm text-gray-600">Logged in as</p>
-                    <p className="font-semibold text-indigo-700">{userRole}</p>
+                    <p className="font-semibold text-indigo-700">{userName} ({userRole})</p>
                   </div>
                   <button
                     onClick={handleLogout}
@@ -214,30 +257,67 @@ const handleLogout = async () => {
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 py-10">
         <div className="max-w-6xl mx-auto bg-white shadow-xl rounded-2xl p-8">
 
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <Clock className="w-8 h-8 text-indigo-600" />
-              <h1 className="text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                My Tasks
-              </h1>
-            </div>
+          {/* Header (Dashboard/tasks view only) */}
+          {view === "tasks" && (
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <Clock className="w-8 h-8 text-indigo-600" />
+                <h1 className="text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                  My Tasks
+                </h1>
+              </div>
 
-            <button
-              onClick={handleAdd}
-              className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-5 py-2 rounded-lg shadow hover:scale-105 transition flex items-center gap-2"
-            >
-              <span>+</span> Add Task
-            </button>
+              <button
+                onClick={handleAdd}
+                className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-5 py-2 rounded-lg shadow hover:scale-105 transition flex items-center gap-2"
+              >
+                <span>+</span> Add Task
+              </button>
+            </div>
+          )}
+
+          {/* View tabs */}
+          <div className="flex gap-2 mb-6" role="tablist">
+            {[["tasks", "Tasks"], ["insights", "Insights"]].map(([key, label]) => (
+              <button
+                key={key}
+                role="tab"
+                aria-selected={view === key}
+                onClick={() => setView(key)}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                  view === key ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
-          {/* ✅ KANBAN GOES HERE */}
-          <KanbanBoard
-            tasks={tasks}
-            onEdit={handleEdit}
-            onDelete={(id) => deleteTask(id).then(loadTasks)}
-            onStatusChange={handleStatusChange}
-          />
+          {view === "tasks" ? (
+            <>
+              {actionError && (
+                <div role="alert" className="mb-4 rounded border border-red-300 bg-red-100 p-3 text-sm text-red-700">
+                  {actionError}
+                </div>
+              )}
+              {loadError ? (
+                <div role="alert" className="rounded border border-red-300 bg-red-50 p-6 text-center text-red-700">
+                  <p className="mb-3">{loadError}</p>
+                  <button onClick={retryLoad} className="px-4 py-2 rounded bg-red-600 text-white">Retry</button>
+                </div>
+              ) : (
+                <KanbanBoard
+                  tasks={visibleTasks}
+                  pendingIds={pendingIds}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  onStatusChange={handleStatusChange}
+                />
+              )}
+            </>
+          ) : (
+            <Insights revision={insightsRevision} />
+          )}
 
         </div>
 

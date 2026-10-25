@@ -1,23 +1,25 @@
-import axiosInstance from '../utils/axiosInstance'
+import axiosInstance from '../api/axiosInstance'
+import { clearSession, getSession, saveSession } from '../utils/session'
 
-const API_URL = "http://localhost:8080/auth";
+export const login = async ({ username, password }) => {
+  const response = await axiosInstance.post('/auth/login', { username, password })
+  saveSession(response.data?.token)
+  return response.data
+}
 
-export const login = async (credentials) => {
-  const response = await axiosInstance.post('/auth/login', credentials)
+export const register = async ({ userName, email, password }) => {
+  const response = await axiosInstance.post('/auth/register', {
+    userName, email, password, role: 'USER',
+  })
   return response.data
 }
 
 export const logout = async () => {
-  const token = localStorage.getItem("token");
-  if (!token) return;
-
-  return axiosInstance.post(
-    "/auth/logout",
-    {},
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+  try {
+    if (getSession()) {
+      return await axiosInstance.post('/auth/logout', {})
     }
-  );
-};
+  } finally {
+    clearSession()
+  }
+}

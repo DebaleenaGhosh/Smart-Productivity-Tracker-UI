@@ -1,7 +1,7 @@
 import { logout } from "../services/authService";
 import { useNavigate } from "react-router-dom";
 
-export default function TopBar() {
+export default function TopBar({ onAdd }) {
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -21,7 +21,7 @@ export default function TopBar() {
           placeholder="Search tasks"
         />
         <button
-            onClick={() => setShowModal(true)}
+            onClick={() => onAdd?.()}
             className="bg-indigo-600 text-white px-4 py-2 rounded-lg"
             >
             + Add Task
