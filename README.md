@@ -1,5 +1,4 @@
 # Smart Productivity Tracker – Frontend
-
 A modern React + Tailwind CSS frontend for a microservices-based task management system.
 
 ## 🚀 Features
