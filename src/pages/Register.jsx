@@ -1,6 +1,8 @@
 import { useState } from "react"
 import { useNavigate, Link } from "react-router-dom"
-import axios from "axios"
+import { register } from "../services/authService"
+import { getApiError } from "../utils/apiError"
+import PasswordInput from "../components/PasswordInput"
 
 export default function Register() {
   const navigate = useNavigate()
@@ -9,33 +11,29 @@ export default function Register() {
     userName: "",
     email: "",
     password: "",
-    role: "USER"
   })
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value })
   }
 
-  const [message, setMessage] = useState("");
+  const [error, setError] = useState("")
+  const [pending, setPending] = useState(false)
 
   const handleRegister = async (e) => {
     e.preventDefault()
-
+    if (pending || !e.currentTarget.reportValidity()) return
+    setPending(true)
+    setError("")
     try {
-      await axios.post(
-        "http://localhost:8080/auth/register",
-        form
-      )
-
-      setMessage("Registration successful! Please login.");
-      setTimeout(() => navigate("/"), 1500);
-
+      await register(form)
+      navigate("/", { replace: true, state: { message: "Registration successful! Please login." } })
     } catch (err) {
-      if (err.response && err.response.status === 400) {
-        setMessage("Username or email already in use.");
-      } else {
-        setMessage("Registration failed. Please try again.");
-      }
+      setError(getApiError(err, err.response?.status === 400
+        ? "Check your details; the username or email may already be in use."
+        : "Registration failed. Please try again."))
+    } finally {
+      setPending(false)
     }
   }
 
@@ -43,52 +41,58 @@ export default function Register() {
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <form
         onSubmit={handleRegister}
+        aria-busy={pending}
+        aria-describedby={error ? "register-error" : undefined}
         className="bg-white p-8 rounded-xl shadow-md w-96"
       >
         <h2 className="text-2xl font-semibold text-center mb-6">
           Register
         </h2>
 
-        {message && <div className="alert alert-info mb-4 text-center text-blue-700 bg-blue-100 border border-blue-300 rounded p-2">{message}</div>}
+        {error && <div id="register-error" role="alert" className="mb-4 text-center text-red-700 bg-red-100 border border-red-300 rounded p-2">{error}</div>}
 
         <input
           name="userName"
           placeholder="Username"
+          aria-label="Username"
+          autoComplete="username"
+          minLength={3}
+          maxLength={30}
+          value={form.userName}
+          disabled={pending}
           className="input"
           onChange={handleChange}
           required
         />
 
         <input
+          type="email"
           name="email"
           placeholder="Email"
+          aria-label="Email"
+          autoComplete="email"
+          value={form.email}
+          disabled={pending}
           className="input"
           onChange={handleChange}
           required
         />
 
-        <input
-          type="password"
+        <PasswordInput
           name="password"
           placeholder="Password"
-          className="input"
+          aria-label="Password"
+          autoComplete="new-password"
+          minLength={8}
+          maxLength={100}
+          value={form.password}
+          disabled={pending}
           onChange={handleChange}
           required
         />
 
-        <select
-          name="role"
-          className="input"
-          onChange={handleChange}
-        >
-          <option value="USER">USER</option>
-          <option value="ADMIN">ADMIN</option>
-          <option value="PREMIUM_USER">PREMIUM USER</option>
-          <option value="MODERATOR">MODERATOR</option>
-        </select>
-
-        <button className="btn-primary w-full mt-4">
-          Register
+        <button type="submit" disabled={pending} className="btn-primary w-full mt-4 disabled:opacity-50">
+          {pending ? "Registering…" : "Register"}
         </button>
 
         <p className="text-sm text-center mt-4 text-gray-600">

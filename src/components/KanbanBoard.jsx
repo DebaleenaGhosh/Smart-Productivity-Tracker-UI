@@ -47,6 +47,7 @@ const PRIORITY_CONFIG = {
 
 export default function KanbanBoard({
   tasks,
+  pendingIds = [],
   onEdit,
   onDelete,
   onStatusChange,
@@ -78,6 +79,12 @@ export default function KanbanBoard({
                     {task.description}
                   </p>
 
+                  <p className="text-xs text-gray-500 mt-2">
+                    {task.dueDate && <span>Due {task.dueDate}</span>}
+                    {task.category && <span> · {task.category}</span>}
+                    {task.estimatedMinutes != null && <span> · est. {task.estimatedMinutes} min</span>}
+                  </p>
+
                   <div className="flex items-center justify-between mt-3">
                     {(() => {
                       const config = PRIORITY_CONFIG[task.priority?.toUpperCase()] || PRIORITY_CONFIG.LOW;
@@ -92,10 +99,11 @@ export default function KanbanBoard({
 
                     <select
                       value={task.status}
+                      disabled={pendingIds.includes(task.taskId)}
                       onChange={(e) =>
                         onStatusChange(task, e.target.value)
                       }
-                      className="text-xs border rounded px-2 py-1 cursor-pointer"
+                      className="text-xs border rounded px-2 py-1 cursor-pointer disabled:opacity-50"
                     >
                       <option value="PENDING">Pending</option>
                       <option value="IN_PROGRESS">In Progress</option>
@@ -106,13 +114,15 @@ export default function KanbanBoard({
                   <div className="flex justify-end gap-3 mt-3 text-sm">
                     <button
                       onClick={() => onEdit(task)}
-                      className="text-indigo-600 hover:underline"
+                      disabled={pendingIds.includes(task.taskId)}
+                      className="text-indigo-600 hover:underline disabled:opacity-50"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => onDelete(task.taskId)}
-                      className="text-red-600 hover:underline"
+                      disabled={pendingIds.includes(task.taskId)}
+                      className="text-red-600 hover:underline disabled:opacity-50"
                     >
                       Delete
                     </button>

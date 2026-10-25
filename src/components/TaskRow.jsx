@@ -4,7 +4,7 @@ function priorityStyle(priority) {
   return 'bg-green-100 text-green-600'
 }
 
-function TaskRow({ task, onEdit, onDelete, onToggle }) {
+function TaskRow({ task, onEdit, onDelete }) {
   return (
     <div className="grid grid-cols-7 px-4 py-3 text-sm border-b hover:bg-gray-50">
       <div className="font-medium">{task.title}</div>
